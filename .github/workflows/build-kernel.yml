@@ -50,7 +50,7 @@ jobs:
             gcc-arm-linux-gnueabi git libelf-dev libncurses-dev libssl-dev \
             libyaml-dev lz4 make python3 python3-pip tar xz-utils zip
 
-      - name: Setup Neutron Clang 18 Toolchain (Pinned 03062026)
+      - name: Setup Neutron Clang Toolchain (Pinned 03062026)
         run: |
           mkdir -p clang
           cd clang
@@ -83,7 +83,7 @@ jobs:
           fi
           echo "Kernel checked out at: $(git log -1 --oneline)"
 
-      - name: Apply DroidSpaces kABI Patches (with guard)
+      - name: Apply DroidSpaces kABI Patches
         run: |
           cd kernel_src
           
@@ -92,20 +92,20 @@ jobs:
             local patch_name
             patch_name="$(basename "$patch_path")"
             
-            if git apply --check "$patch_path" >/dev/null 2>&1; then
-              echo "Applying ${patch_name}..."
-              git apply --verbose --3way "$patch_path"
-            elif git apply --reverse --check "$patch_path" >/dev/null 2>&1; then
+            if git apply --reverse --check "$patch_path" >/dev/null 2>&1; then
               echo "Notice: ${patch_name} is already present in source tree, skipping."
+            elif git apply --check "$patch_path" >/dev/null 2>&1; then
+              echo "Applying ${patch_name} cleanly..."
+              git apply --verbose "$patch_path"
             else
-              echo "Applying ${patch_name} with 3-way merge fallback..."
-              git apply --verbose --3way "$patch_path" || echo "Warning: skipped ${patch_name}"
+              echo "Applying ${patch_name} with 3-way merge..."
+              git apply --verbose --3way "$patch_path"
             fi
           }
           
           apply_kabi_patch "../patches/001-fix-sysvipc-kabi.patch"
           apply_kabi_patch "../patches/002-fix-posix-mqueue-kabi.patch"
-          echo "Patching completed."
+          echo "All DroidSpaces kABI patches applied successfully."
 
       - name: Configure Kernel with DroidSpaces Defconfig Fragment
         run: |

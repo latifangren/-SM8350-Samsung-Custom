@@ -5,9 +5,10 @@ This moves mq_bytes into ANDROID_KABI_RESERVE padding so that
 CONFIG_POSIX_MQUEUE can be enabled without breaking user_struct kABI.
 
 ---
- include/linux/sched/user.h | 8 +++++++-
- 1 file changed, 7 insertions(+), 1 deletion(-)
+ include/linux/sched/user.h | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
 
+diff --git a/include/linux/sched/user.h b/include/linux/sched/user.h
 --- a/include/linux/sched/user.h
 +++ b/include/linux/sched/user.h
 @@ -23,7 +23,7 @@ struct user_struct {
@@ -19,7 +20,7 @@ CONFIG_POSIX_MQUEUE can be enabled without breaking user_struct kABI.
  #endif
  	unsigned long locked_shm; /* How many pages of mlocked shm ? */
  	unsigned long unix_inflight;	/* How many files in flight in unix sockets */
-@@ -41,6 +41,11 @@ struct user_struct {
+@@ -41,8 +41,13 @@ struct user_struct {
  	/* Miscellaneous per-user rate limit */
  	struct ratelimit_state ratelimit;
  
@@ -27,7 +28,9 @@ CONFIG_POSIX_MQUEUE can be enabled without breaking user_struct kABI.
 +	ANDROID_KABI_USE(1, unsigned long mq_bytes);
 +	ANDROID_KABI_RESERVE(2);
 +#else
-+	ANDROID_KABI_RESERVE(1);
-+	ANDROID_KABI_RESERVE(2);
+ 	ANDROID_KABI_RESERVE(1);
+ 	ANDROID_KABI_RESERVE(2);
 +#endif
  };
+ 
+ extern int uids_sysfs_init(void);
