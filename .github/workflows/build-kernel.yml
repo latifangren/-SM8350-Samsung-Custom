@@ -7,9 +7,13 @@ on:
         description: 'Kernel Source Git Repository'
         required: true
         default: 'https://github.com/AlexFurina/android_kernel_samsung_sm8350'
-      kernel_ref:
-        description: 'Branch, Tag, or Commit SHA (Default: Option 1 commit 9e6bd77c)'
+      kernel_branch:
+        description: 'Kernel Source Branch to fetch'
         required: true
+        default: 'Flip3-Android16'
+      kernel_commit:
+        description: 'Commit SHA to checkout (Default: Option 1 commit 9e6bd77c)'
+        required: false
         default: '9e6bd77c10b42fdf40c316279f57ebbf794ae3b9'
       defconfig_target:
         description: 'Target Defconfig'
@@ -30,7 +34,7 @@ on:
 jobs:
   build:
     name: Build Kernel & Package
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Helper Repository
@@ -55,15 +59,18 @@ jobs:
       - name: Clone Samsung SM8350 Kernel Source
         run: |
           REPO_URL="${{ github.event.inputs.kernel_repo || 'https://github.com/AlexFurina/android_kernel_samsung_sm8350' }}"
-          REF="${{ github.event.inputs.kernel_ref || '9e6bd77c10b42fdf40c316279f57ebbf794ae3b9' }}"
+          BRANCH="${{ github.event.inputs.kernel_branch || 'Flip3-Android16' }}"
+          COMMIT="${{ github.event.inputs.kernel_commit || '9e6bd77c10b42fdf40c316279f57ebbf794ae3b9' }}"
           
-          echo "Cloning ${REPO_URL} at ${REF}..."
-          git init kernel_src
+          echo "Cloning ${REPO_URL} branch ${BRANCH}..."
+          git clone --filter=blob:none --branch "${BRANCH}" "${REPO_URL}" kernel_src
           cd kernel_src
-          git remote add origin "${REPO_URL}"
-          git fetch --depth 1 origin "${REF}"
-          git checkout FETCH_HEAD
-          echo "Kernel HEAD: $(git log -1 --oneline)"
+          
+          if [ -n "${COMMIT}" ]; then
+            echo "Checking out commit ${COMMIT}..."
+            git checkout "${COMMIT}"
+          fi
+          echo "Kernel checked out at: $(git log -1 --oneline)"
 
       - name: Apply DroidSpaces kABI Patches
         run: |
