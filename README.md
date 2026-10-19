@@ -26,9 +26,8 @@ Stock Samsung kernels omit core containerization namespaces and IPC primitives. 
 | **TTL Target / Match** | `CONFIG_NETFILTER_XT_TARGET_HL` / `XT_MATCH_HL` | ✅ Enabled | TTL modification for tethering / routing |
 | **Firewall Support** | `CONFIG_IP_SET` / `CONFIG_NETFILTER_XT_SET` | ✅ Enabled | UFW & Fail2ban support inside containers |
 | **OverlayFS & POSIX ACL**| `CONFIG_OVERLAY_FS` / `CONFIG_TMPFS_POSIX_ACL` | ✅ Enabled | Volatile container mode & NixOS support |
-| **Touchscreen (built-in)** | `CONFIG_TOUCHSCREEN_STM=y` (+sec_input stack) | ✅ Built-in | Z Flip3 stm_fold driver is in-tree so /vendor_dlkm modules are not required |
+| **Touchscreen (vendor module)** | `CONFIG_TOUCHSCREEN_STM=m` (stock) | 📦 Module | Loads from `/vendor_dlkm` on boot; b2q_kor_singlex_defconfig ships it as a module and we keep that to avoid linker errors |
 
----
 
 ## 🛡️ kABI Safety (Zero-Bootloop Guarantee)
 
