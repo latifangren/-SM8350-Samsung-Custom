@@ -20,9 +20,9 @@ on:
         required: true
         default: 'vendor/b2q_kor_singlex_defconfig'
       localversion:
-        description: 'Kernel LOCALVERSION suffix'
+        description: 'Kernel LOCALVERSION suffix (Default: -Columbina so modules in /vendor_dlkm load)'
         required: true
-        default: '-Columbina-Droidspaces'
+        default: '-Columbina'
   push:
     branches:
       - main
@@ -111,7 +111,7 @@ jobs:
         run: |
           cd kernel_src
           DEFCONFIG_TARGET="${{ github.event.inputs.defconfig_target || 'vendor/b2q_kor_singlex_defconfig' }}"
-          LOCALVERSION_VAL="${{ github.event.inputs.localversion || '-Columbina-Droidspaces' }}"
+          LOCALVERSION_VAL="${{ github.event.inputs.localversion || '-Columbina' }}"
           
           mkdir -p out
           
@@ -208,9 +208,9 @@ jobs:
           cp ../kernel_src/out/arch/arm64/boot/Image .
           
           # Build AnyKernel3 zip
-          zip -r9 ../Columbina-Droidspaces-b2q-AnyKernel3.zip * -x README.md *placeholder
+          zip -r9 ../Columbina-b2q-AnyKernel3.zip * -x README.md *placeholder
           cd ..
-          ls -lh Columbina-Droidspaces-b2q-AnyKernel3.zip
+          ls -lh Columbina-b2q-AnyKernel3.zip
 
       - name: Repack Boot Image (if base boot.img exists)
         run: |
@@ -219,25 +219,23 @@ jobs:
             python3 scripts/repack_bootimg.py \
               default/boot.img \
               kernel_src/out/arch/arm64/boot/Image \
-              Columbina-Droidspaces-b2q-boot.img
-            ls -lh Columbina-Droidspaces-b2q-boot.img
-          else
-            echo "default/boot.img not found, skipping direct boot.img repack."
+              Columbina-b2q-boot.img
+            ls -lh Columbina-b2q-boot.img
           fi
 
       - name: Upload AnyKernel3 & Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: Columbina-Droidspaces-ZFlip3-AnyKernel3
+          name: Columbina-ZFlip3-AnyKernel3
           path: |
-            Columbina-Droidspaces-b2q-AnyKernel3.zip
+            Columbina-b2q-AnyKernel3.zip
             kernel_src/out/arch/arm64/boot/Image
             kernel_src/out/.config
           if-no-files-found: error
 
       - name: Upload Repacked Boot Image (if generated)
-        if: hashFiles('Columbina-Droidspaces-b2q-boot.img') != ''
+        if: hashFiles('Columbina-b2q-boot.img') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: Columbina-Droidspaces-ZFlip3-boot.img
-          path: Columbina-Droidspaces-b2q-boot.img
+          name: Columbina-ZFlip3-boot.img
+          path: Columbina-b2q-boot.img

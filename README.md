@@ -20,12 +20,13 @@ Stock Samsung kernels omit core containerization namespaces and IPC primitives. 
 | **Device Filesystem** | `CONFIG_DEVTMPFS` | ✅ Enabled | Hardware device nodes inside containers |
 | **Network Namespace** | `CONFIG_NET_NS` | ✅ Enabled | Virtual network stack isolation |
 | **Virtual Ethernet** | `CONFIG_VETH` | ✅ Enabled | Virtual ethernet pairs for routing |
-| **Bridge Networking** | `CONFIG_BRIDGE` / `CONFIG_BRIDGE_NETFILTER` | ✅ Enabled | Bridged container networking |
+| **Bridge Networking** | `CONFIG_BRIDGE` | ✅ Enabled | Bridged container networking |
 | **Macvlan** | `CONFIG_MACVLAN` | ✅ Enabled | Direct LAN IP assignment |
 | **IPv6 NAT (NAT66)** | `CONFIG_IP6_NF_NAT` / `CONFIG_IP6_NF_TARGET_MASQUERADE` | ✅ Enabled | Full IPv6 container routing |
 | **TTL Target / Match** | `CONFIG_NETFILTER_XT_TARGET_HL` / `XT_MATCH_HL` | ✅ Enabled | TTL modification for tethering / routing |
 | **Firewall Support** | `CONFIG_IP_SET` / `CONFIG_NETFILTER_XT_SET` | ✅ Enabled | UFW & Fail2ban support inside containers |
 | **OverlayFS & POSIX ACL**| `CONFIG_OVERLAY_FS` / `CONFIG_TMPFS_POSIX_ACL` | ✅ Enabled | Volatile container mode & NixOS support |
+| **Touchscreen (built-in)** | `CONFIG_TOUCHSCREEN_STM=y` (+sec_input stack) | ✅ Built-in | Z Flip3 stm_fold driver is in-tree so /vendor_dlkm modules are not required |
 
 ---
 
@@ -77,11 +78,11 @@ Kernel compilation is fully automated via GitHub Actions using the official **Ne
    * **Kernel Branch**: `Flip3-Android16`
    * **Kernel Commit**: `9e6bd77c825e1c7c025b18584f6c8acd660ea155` (Columbina 5.4.302 base commit matching X-ROM v3.2)
    * **Defconfig**: `vendor/b2q_kor_singlex_defconfig`
-   * **LOCALVERSION**: `-Columbina-Droidspaces`
+   * **LOCALVERSION**: `-Columbina` (kept identical to the original Columbina string so vendor modules in /vendor_dlkm still load)
 5. Click **Run workflow** to start compilation.
 6. Once finished (~15–20 min), download the artifacts:
-   * **`Columbina-Droidspaces-b2q-AnyKernel3.zip`**: Universal recovery flashable zip.
-   * **`Columbina-Droidspaces-b2q-boot.img`**: Pre-repacked boot image (if `default/boot.img` is present).
+   * **`Columbina-b2q-AnyKernel3.zip`**: Universal recovery flashable zip.
+   * **`Columbina-b2q-boot.img`**: Pre-repacked boot image (if `default/boot.img` is present).
    * **`Image`** & **`.config`**: Raw compiled kernel and configuration log.
 
 ---
@@ -89,26 +90,22 @@ Kernel compilation is fully automated via GitHub Actions using the official **Ne
 ## 📲 Installation
 
 ### Method 1: Recovery / Kernel Flasher (Recommended)
-1. Download `Columbina-Droidspaces-b2q-AnyKernel3.zip` from GitHub Actions Artifacts.
-2. Flash the zip via:
-   * **TWRP Recovery** -> Install -> Select Zip -> Swipe to confirm, OR
-   * **Franco Kernel Manager / KernelFlasher** app with root.
-3. Reboot device.
+   1. Download `Columbina-b2q-AnyKernel3.zip` from GitHub Actions Artifacts.
+   2. Flash the zip via:
+      * **TWRP Recovery** -> Install -> Select Zip -> Swipe to confirm, OR
+      * **Franco Kernel Manager / KernelFlasher** app with root.
+   3. Reboot device.
 
-### Method 2: Fastboot / Direct Boot Image Flash
-If you downloaded `Columbina-Droidspaces-b2q-boot.img`:
+### Method 2: Fastboot / Direct Boot Image Flash (Recommended for friends who flash directly)
+If you downloaded `Columbina-b2q-boot.img`:
 ```bash
 # Via fastboot / fastbootd
-fastboot flash boot Columbina-Droidspaces-b2q-boot.img
+fastboot flash boot Columbina-b2q-boot.img
 fastboot reboot
-```
-Or via root terminal on the phone:
-```sh
-su -c 'dd if=/sdcard/Download/Columbina-Droidspaces-b2q-boot.img of=/dev/block/by-name/boot bs=4096'
+# Or via root terminal on the phone:
+su -c 'dd if=/sdcard/Download/Columbina-b2q-boot.img of=/dev/block/by-name/boot bs=4096'
 su -c 'reboot'
 ```
-
----
 
 ## 🔍 Verification
 
@@ -118,7 +115,7 @@ After booting the new kernel:
 3. All core namespaces, IPC, devtmpfs, veth, bridge, and overlayfs checks will show **Passed (Green)**.
 4. Verify kernel version in Settings -> About Phone -> Software information:
    ```text
-   5.4.302-Columbina-Droidspaces
+   5.4.302-Columbina (unchanged from stock to keep vendor modules compatible)
    ```
 
 ---
