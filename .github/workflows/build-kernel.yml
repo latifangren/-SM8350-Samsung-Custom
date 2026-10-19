@@ -1,0 +1,173 @@
+name: Build Columbina DroidSpaces Kernel for Galaxy Z Flip3 (b2q)
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_repo:
+        description: 'Kernel Source Git Repository'
+        required: true
+        default: 'https://github.com/AlexFurina/android_kernel_samsung_sm8350'
+      kernel_ref:
+        description: 'Branch, Tag, or Commit SHA (Default: Option 1 commit 9e6bd77c)'
+        required: true
+        default: '9e6bd77c10b42fdf40c316279f57ebbf794ae3b9'
+      defconfig_target:
+        description: 'Target Defconfig'
+        required: true
+        default: 'vendor/b2q_kor_singlex_defconfig'
+      localversion:
+        description: 'Kernel LOCALVERSION suffix'
+        required: true
+        default: '-Columbina-Droidspaces'
+  push:
+    branches:
+      - main
+    paths:
+      - 'patches/**'
+      - 'config/**'
+      - '.github/workflows/**'
+
+jobs:
+  build:
+    name: Build Kernel & Package
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Helper Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison ca-certificates ccache curl flex gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi git libelf-dev libncurses-dev libssl-dev \
+            libyaml-dev lz4 make python3 python3-pip tar xz-utils zip
+
+      - name: Setup Neutron Clang 18 Toolchain
+        run: |
+          mkdir -p clang
+          cd clang
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") --patch=glibc
+          echo "${GITHUB_WORKSPACE}/clang/bin" >> $GITHUB_PATH
+
+      - name: Clone Samsung SM8350 Kernel Source
+        run: |
+          REPO_URL="${{ github.event.inputs.kernel_repo || 'https://github.com/AlexFurina/android_kernel_samsung_sm8350' }}"
+          REF="${{ github.event.inputs.kernel_ref || '9e6bd77c10b42fdf40c316279f57ebbf794ae3b9' }}"
+          
+          echo "Cloning ${REPO_URL} at ${REF}..."
+          git init kernel_src
+          cd kernel_src
+          git remote add origin "${REPO_URL}"
+          git fetch --depth 1 origin "${REF}"
+          git checkout FETCH_HEAD
+          echo "Kernel HEAD: $(git log -1 --oneline)"
+
+      - name: Apply DroidSpaces kABI Patches
+        run: |
+          cd kernel_src
+          echo "Applying patch 001-fix-sysvipc-kabi.patch..."
+          git apply --verbose ../patches/001-fix-sysvipc-kabi.patch
+          
+          echo "Applying patch 002-fix-posix-mqueue-kabi.patch..."
+          git apply --verbose ../patches/002-fix-posix-mqueue-kabi.patch
+          
+          echo "Patches applied successfully."
+
+      - name: Configure Kernel with DroidSpaces Defconfig Fragment
+        run: |
+          cd kernel_src
+          DEFCONFIG_TARGET="${{ github.event.inputs.defconfig_target || 'vendor/b2q_kor_singlex_defconfig' }}"
+          LOCALVERSION_VAL="${{ github.event.inputs.localversion || '-Columbina-Droidspaces' }}"
+          
+          mkdir -p out
+          
+          # Generate base defconfig
+          make O=out ARCH=arm64 "${DEFCONFIG_TARGET}"
+          
+          # Append DroidSpaces config fragment
+          echo "Appending DroidSpaces configuration fragment..."
+          cat ../config/droidspaces.config >> out/.config
+          
+          # Set localversion
+          sed -i "s|CONFIG_LOCALVERSION=.*|CONFIG_LOCALVERSION=\"${LOCALVERSION_VAL}\"|" out/.config
+          
+          # Resolve configuration dependencies
+          make O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 olddefconfig
+          
+          # Verify key DroidSpaces configs
+          echo "Verifying DroidSpaces config values in out/.config:"
+          grep -E "CONFIG_(SYSVIPC|POSIX_MQUEUE|NAMESPACES|PID_NS|IPC_NS|USER_NS|DEVTMPFS|OVERLAY_FS|NET_NS|VETH|BRIDGE)" out/.config
+
+      - name: Compile Kernel Image
+        run: |
+          cd kernel_src
+          
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export LD=ld.lld
+          export AR=llvm-ar
+          export NM=llvm-nm
+          export OBJCOPY=llvm-objcopy
+          export OBJDUMP=llvm-objdump
+          export STRIP=llvm-strip
+          export LLVM=1
+          export LLVM_IAS=1
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          
+          # Compile Image
+          make O=out -j$(nproc --all) Image
+          
+          if [ -f "out/arch/arm64/boot/Image" ]; then
+            echo "Kernel compiled successfully!"
+            ls -lh out/arch/arm64/boot/Image
+          else
+            echo "Error: Image not found after compilation!"
+            exit 1
+          fi
+
+      - name: Package with AnyKernel3
+        run: |
+          mkdir -p package_ak3
+          cd package_ak3
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git .
+          rm -rf .git
+          
+          # Copy custom anykernel.sh for b2q
+          cp ../anykernel/anykernel.sh .
+          
+          # Copy compiled Image
+          cp ../kernel_src/out/arch/arm64/boot/Image .
+          
+          # Build AnyKernel3 zip
+          zip -r9 ../Columbina-Droidspaces-b2q-AnyKernel3.zip * -x README.md *placeholder
+          cd ..
+          ls -lh Columbina-Droidspaces-b2q-AnyKernel3.zip
+
+      - name: Repack Boot Image (if base boot.img exists)
+        run: |
+          if [ -f "default/boot.img" ]; then
+            echo "Repacking default/boot.img with new kernel Image..."
+            python3 scripts/repack_bootimg.py \
+              default/boot.img \
+              kernel_src/out/arch/arm64/boot/Image \
+              Columbina-Droidspaces-b2q-boot.img
+            ls -lh Columbina-Droidspaces-b2q-boot.img
+          else
+            echo "default/boot.img not found, skipping direct boot.img repack."
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Columbina-Droidspaces-ZFlip3-Build
+          path: |
+            Columbina-Droidspaces-b2q-AnyKernel3.zip
+            Columbina-Droidspaces-b2q-boot.img
+            kernel_src/out/arch/arm64/boot/Image
+            kernel_src/out/.config
+          if-no-files-found: error
