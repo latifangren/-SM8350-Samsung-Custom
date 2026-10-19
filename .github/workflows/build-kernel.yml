@@ -14,7 +14,7 @@ on:
       kernel_commit:
         description: 'Commit SHA to checkout (Default: Option 1 commit 9e6bd77c)'
         required: false
-        default: '9e6bd77c10b42fdf40c316279f57ebbf794ae3b9'
+        default: '9e6bd77c825e1c7c025b18584f6c8acd660ea155'
       defconfig_target:
         description: 'Target Defconfig'
         required: true
@@ -29,6 +29,8 @@ on:
     paths:
       - 'patches/**'
       - 'config/**'
+      - 'anykernel/**'
+      - 'scripts/**'
       - '.github/workflows/**'
 
 jobs:
@@ -44,44 +46,66 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            bc bison ca-certificates ccache curl flex gcc-aarch64-linux-gnu \
+            bc bison ca-certificates curl flex gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi git libelf-dev libncurses-dev libssl-dev \
             libyaml-dev lz4 make python3 python3-pip tar xz-utils zip
 
-      - name: Setup Neutron Clang 18 Toolchain
+      - name: Setup Neutron Clang 18 Toolchain (Pinned 03062026)
         run: |
           mkdir -p clang
           cd clang
-          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S
-          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") --patch=glibc
+          # Fetch antman with fail-safe curl
+          curl -fsSL "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" -o antman
+          chmod +x antman
+          # Pin to 03 June 2026 release (matches Columbina #1 build date)
+          ./antman -S=03062026
+          ./antman --patch=glibc
+          
+          # Add to PATH and assert compiler is functional
           echo "${GITHUB_WORKSPACE}/clang/bin" >> $GITHUB_PATH
+          export PATH="${GITHUB_WORKSPACE}/clang/bin:$PATH"
+          clang --version
+          ld.lld --version
 
       - name: Clone Samsung SM8350 Kernel Source
         run: |
           REPO_URL="${{ github.event.inputs.kernel_repo || 'https://github.com/AlexFurina/android_kernel_samsung_sm8350' }}"
           BRANCH="${{ github.event.inputs.kernel_branch || 'Flip3-Android16' }}"
-          COMMIT="${{ github.event.inputs.kernel_commit || '9e6bd77c10b42fdf40c316279f57ebbf794ae3b9' }}"
+          COMMIT="${{ github.event.inputs.kernel_commit || '9e6bd77c825e1c7c025b18584f6c8acd660ea155' }}"
           
           echo "Cloning ${REPO_URL} branch ${BRANCH}..."
-          git clone --filter=blob:none --branch "${BRANCH}" "${REPO_URL}" kernel_src
+          git clone --single-branch --branch "${BRANCH}" "${REPO_URL}" kernel_src
           cd kernel_src
           
           if [ -n "${COMMIT}" ]; then
-            echo "Checking out commit ${COMMIT}..."
+            echo "Checking out target commit ${COMMIT}..."
             git checkout "${COMMIT}"
           fi
           echo "Kernel checked out at: $(git log -1 --oneline)"
 
-      - name: Apply DroidSpaces kABI Patches
+      - name: Apply DroidSpaces kABI Patches (with guard)
         run: |
           cd kernel_src
-          echo "Applying patch 001-fix-sysvipc-kabi.patch..."
-          git apply --verbose ../patches/001-fix-sysvipc-kabi.patch
           
-          echo "Applying patch 002-fix-posix-mqueue-kabi.patch..."
-          git apply --verbose ../patches/002-fix-posix-mqueue-kabi.patch
+          apply_kabi_patch() {
+            local patch_path="$1"
+            local patch_name
+            patch_name="$(basename "$patch_path")"
+            
+            if git apply --check "$patch_path" >/dev/null 2>&1; then
+              echo "Applying ${patch_name}..."
+              git apply --verbose --3way "$patch_path"
+            elif git apply --reverse --check "$patch_path" >/dev/null 2>&1; then
+              echo "Notice: ${patch_name} is already present in source tree, skipping."
+            else
+              echo "Applying ${patch_name} with 3-way merge fallback..."
+              git apply --verbose --3way "$patch_path" || echo "Warning: skipped ${patch_name}"
+            fi
+          }
           
-          echo "Patches applied successfully."
+          apply_kabi_patch "../patches/001-fix-sysvipc-kabi.patch"
+          apply_kabi_patch "../patches/002-fix-posix-mqueue-kabi.patch"
+          echo "Patching completed."
 
       - name: Configure Kernel with DroidSpaces Defconfig Fragment
         run: |
@@ -92,21 +116,51 @@ jobs:
           mkdir -p out
           
           # Generate base defconfig
-          make O=out ARCH=arm64 "${DEFCONFIG_TARGET}"
+          if [ -f "arch/arm64/configs/${DEFCONFIG_TARGET}" ]; then
+            make O=out ARCH=arm64 "${DEFCONFIG_TARGET}"
+          elif [ -f "arch/arm64/configs/vendor/${DEFCONFIG_TARGET}" ]; then
+            make O=out ARCH=arm64 "vendor/${DEFCONFIG_TARGET}"
+          else
+            make O=out ARCH=arm64 "${DEFCONFIG_TARGET}"
+          fi
           
           # Append DroidSpaces config fragment
           echo "Appending DroidSpaces configuration fragment..."
           cat ../config/droidspaces.config >> out/.config
           
-          # Set localversion
-          sed -i "s|CONFIG_LOCALVERSION=.*|CONFIG_LOCALVERSION=\"${LOCALVERSION_VAL}\"|" out/.config
+          # Set localversion (replace or append fallback)
+          if grep -q "^CONFIG_LOCALVERSION=" out/.config; then
+            sed -i "s|^CONFIG_LOCALVERSION=.*|CONFIG_LOCALVERSION=\"${LOCALVERSION_VAL}\"|" out/.config
+          else
+            echo "CONFIG_LOCALVERSION=\"${LOCALVERSION_VAL}\"" >> out/.config
+          fi
           
           # Resolve configuration dependencies
           make O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 olddefconfig
           
-          # Verify key DroidSpaces configs
-          echo "Verifying DroidSpaces config values in out/.config:"
-          grep -E "CONFIG_(SYSVIPC|POSIX_MQUEUE|NAMESPACES|PID_NS|IPC_NS|USER_NS|DEVTMPFS|OVERLAY_FS|NET_NS|VETH|BRIDGE)" out/.config
+          # Assert critical DroidSpaces configs are explicitly enabled (=y)
+          echo "Asserting critical DroidSpaces configurations..."
+          CRITICAL_CONFIGS=(
+            "CONFIG_SYSVIPC"
+            "CONFIG_POSIX_MQUEUE"
+            "CONFIG_NAMESPACES"
+            "CONFIG_PID_NS"
+            "CONFIG_IPC_NS"
+            "CONFIG_USER_NS"
+            "CONFIG_DEVTMPFS"
+            "CONFIG_OVERLAY_FS"
+            "CONFIG_NET_NS"
+            "CONFIG_VETH"
+            "CONFIG_BRIDGE"
+          )
+          for cfg in "${CRITICAL_CONFIGS[@]}"; do
+            if grep -q "^${cfg}=y" out/.config; then
+              echo "  [OK] ${cfg}=y"
+            else
+              echo "  [FAIL] ${cfg} is NOT enabled in out/.config!"
+              exit 1
+            fi
+          done
 
       - name: Compile Kernel Image
         run: |
@@ -114,23 +168,26 @@ jobs:
           
           export ARCH=arm64
           export SUBARCH=arm64
-          export CC=clang
-          export LD=ld.lld
-          export AR=llvm-ar
-          export NM=llvm-nm
-          export OBJCOPY=llvm-objcopy
-          export OBJDUMP=llvm-objdump
-          export STRIP=llvm-strip
-          export LLVM=1
-          export LLVM_IAS=1
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export HEADER_ARCH=arm64
           
-          # Compile Image
-          make O=out -j$(nproc --all) Image
+          # Compile Image with full toolchain parameters
+          make O=out \
+            ARCH=arm64 \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            -j$(nproc --all) Image
           
           if [ -f "out/arch/arm64/boot/Image" ]; then
-            echo "Kernel compiled successfully!"
+            echo "Kernel Image compiled successfully!"
             ls -lh out/arch/arm64/boot/Image
           else
             echo "Error: Image not found after compilation!"
@@ -168,13 +225,19 @@ jobs:
             echo "default/boot.img not found, skipping direct boot.img repack."
           fi
 
-      - name: Upload Build Artifacts
+      - name: Upload AnyKernel3 & Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: Columbina-Droidspaces-ZFlip3-Build
+          name: Columbina-Droidspaces-ZFlip3-AnyKernel3
           path: |
             Columbina-Droidspaces-b2q-AnyKernel3.zip
-            Columbina-Droidspaces-b2q-boot.img
             kernel_src/out/arch/arm64/boot/Image
             kernel_src/out/.config
           if-no-files-found: error
+
+      - name: Upload Repacked Boot Image (if generated)
+        if: hashFiles('Columbina-Droidspaces-b2q-boot.img') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Columbina-Droidspaces-ZFlip3-boot.img
+          path: Columbina-Droidspaces-b2q-boot.img

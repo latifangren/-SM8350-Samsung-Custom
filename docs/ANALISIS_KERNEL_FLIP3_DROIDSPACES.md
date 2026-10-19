@@ -37,7 +37,7 @@ Linux version 5.4.302-Columbina (푸리나@사랑) (Neutron clang version 18.0.0
 ### Identifikasi Titik Commit Upstream
 * **Repository**: `https://github.com/AlexFurina/android_kernel_samsung_sm8350`
 * **Branch**: `Flip3-Android16`
-* **Commit Target**: `9e6bd77c10b42fdf40c316279f57ebbf794ae3b9`
+* **Commit Target**: `9e6bd77c825e1c7c025b18584f6c8acd660ea155`
   * Judul commit: `sys_newuname: spoof on root`
   * Waktu commit: `2026-06-03 16:12:03 UTC` = **`2026-06-04 01:12:03 KST`**
   * Waktu build kernel binary di HP: **`2026-06-04 01:15:57 KST`** (hanya berselang 3 menit 54 detik).

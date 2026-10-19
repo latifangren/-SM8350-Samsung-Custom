@@ -75,7 +75,7 @@ Kernel compilation is fully automated via GitHub Actions using the official **Ne
 4. Click **Run workflow**:
    * **Kernel Source**: `https://github.com/AlexFurina/android_kernel_samsung_sm8350`
    * **Kernel Branch**: `Flip3-Android16`
-   * **Kernel Commit**: `9e6bd77c10b42fdf40c316279f57ebbf794ae3b9` (Columbina 5.4.302 base commit matching X-ROM v3.2)
+   * **Kernel Commit**: `9e6bd77c825e1c7c025b18584f6c8acd660ea155` (Columbina 5.4.302 base commit matching X-ROM v3.2)
    * **Defconfig**: `vendor/b2q_kor_singlex_defconfig`
    * **LOCALVERSION**: `-Columbina-Droidspaces`
 5. Click **Run workflow** to start compilation.
